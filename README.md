@@ -1,4 +1,4 @@
-# Filler Visualizer (Rust)
+# Filler
 
 A terminal-based visualizer for the Filler game engine.  
 This program reads the game engine's output and displays the Anfield, current piece, scores, and turn information in a clean, text-based format.

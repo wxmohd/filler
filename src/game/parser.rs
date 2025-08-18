@@ -113,18 +113,23 @@ impl GameParser {
         io::stdout().flush().unwrap();
     }
 
-    /// Read input from stdin until we get a complete game state
+    /// Read input from stdin line by line for real-time game engine interaction
     pub fn read_game_input() -> io::Result<(Option<u8>, Option<Anfield>, Option<Piece>)> {
         let stdin = io::stdin();
         let mut lines = Vec::new();
         
-        // Read all available input
+        // Read input line by line until we have a complete game state
         for line in stdin.lock().lines() {
             let line = line?;
             lines.push(line);
             
-            // Check if we have enough input to parse
-            if lines.len() > 2 {
+            // Check if we have all components needed
+            let has_player = lines.iter().any(|l| l.starts_with("$$$ exec p"));
+            let has_anfield = lines.iter().any(|l| l.starts_with("Anfield "));
+            let has_piece = lines.iter().any(|l| l.starts_with("Piece "));
+            
+            // If we have all components, process them
+            if has_player && has_anfield && has_piece {
                 break;
             }
         }
@@ -158,17 +163,23 @@ impl GameParser {
             }
             // Parse piece
             else if line.starts_with("Piece ") {
+                // Get piece dimensions from header
+                let (piece_width, piece_height) = Self::parse_piece_header(line).unwrap_or((0, 0));
+                
                 // Collect piece lines
                 let mut piece_lines = vec![line.clone()];
                 i += 1;
                 
-                // Read piece pattern
-                while i < lines.len() {
-                    piece_lines.push(lines[i].clone());
-                    i += 1;
+                // Read exactly piece_height lines for the piece pattern
+                for _ in 0..piece_height {
+                    if i < lines.len() {
+                        piece_lines.push(lines[i].clone());
+                        i += 1;
+                    }
                 }
                 
                 piece = Self::parse_piece(&piece_lines);
+                break; // We have everything we need
             }
             else {
                 i += 1;

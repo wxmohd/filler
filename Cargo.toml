@@ -2,44 +2,14 @@
 name = "filler"
 version = "0.1.0"
 edition = "2021"
-authors = ["wamohamed"]
-description = "A Rust implementation of the Filler algorithmic game with AI player and visualizer"
+
+[[bin]]
+name = "filler_engine"
+path = "src/bin/filler_engine.rs"
 
 [[bin]]
 name = "filler_ai"
-path = "src/main.rs"
-
-[[bin]]
-name = "visualizer"
-path = "src/visualizer/main.rs"
-
-[[bin]]
-name = "test_runner"
-path = "src/bin/test_runner.rs"
-
-[[bin]]
-name = "ai_tester"
-path = "src/bin/ai_tester.rs"
-
-[[bin]]
-name = "game_engine"
-path = "game_engine.rs"
+path = "src/bin/filler_ai.rs"
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
-crossterm = "0.27"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 rand = "0.8"
-
-[dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "ai_benchmark"
-harness = false
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1

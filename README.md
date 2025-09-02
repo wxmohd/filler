@@ -1,81 +1,121 @@
 # Filler Game
 
-A complete implementation of the Filler game in Rust with AI opponents and terminal-based gameplay.
+A terminal-based implementation of the Filler game in Rust with AI opponents.
 
 ## Features
 
-- **Terminal Game Engine**: Standard Filler protocol implementation
-- **AI Bot**: Multiple difficulty levels (Easy, Medium, Hard, Expert)
-- **Human vs AI**: Interactive gameplay with input validation
-- **AI vs AI**: Watch bots compete against each other
-- **Visualizer**: Clean terminal-based game display
-- **Docker Support**: Containerized environment for testing
+- **Game Engine**: Terminal-based Filler game engine (`filler_engine`)
+- **AI Bot**: Standalone AI bot (`filler_ai`) compatible with standard Filler protocol
+- **Multiple AI Difficulties**: Easy (Random), Medium (Greedy), Hard/Expert (Minimax with alpha-beta pruning)
+- **Interactive Gameplay**: Human vs AI, AI vs AI, and Human vs Human modes
+- **Game Visualization**: Terminal-based board display with animations
+- **Docker Support**: Uses existing `docker_image/` folder with pre-built opponent bots
 
-## Building
+## Quick Start
+
+### Building the Project
 
 ```bash
-# Build all binaries
 cargo build --release
-
-# Run tests
-cargo test
 ```
 
-## Usage
+### Running the Game
 
-### Human vs AI
+#### Terminal Game Engine
 ```bash
-cargo run --bin game_engine -- -h
+# Human vs AI
+./target/release/filler_engine
+
+# AI vs AI
+./target/release/filler_engine --ai-vs-ai
+
+# Custom board size
+./target/release/filler_engine --width 20 --height 15
 ```
 
-### AI vs AI
+#### Standalone AI Bot
 ```bash
-cargo run --bin game_engine -- -p1 ./solution/filler_ai -p2 ./solution/filler_ai
+# Test AI with input file
+./target/release/filler_ai < test_input.txt
 ```
 
-### Bot vs Bot with Custom Players
-```bash
-cargo run --bin game_engine -- -p1 robots/bender -p2 robots/terminator
-```
+## Docker Usage
 
-### Using Maps
-```bash
-cargo run --bin game_engine -- -f maps/map01 -p1 ./solution/filler_ai -p2 robots/wall_e
-```
+The project integrates with the existing `docker_image/` folder containing pre-built opponent bots:
 
-## Docker
-
+### Build Docker Image
 ```bash
-# Build container
 docker build -t filler .
-
-# Run container
-docker run -it filler
-
-# Test with audit commands
-./game_engine -f maps/map01 -p1 robots/bender -p2 robots/terminator
 ```
+
+### Run Container
+```bash
+docker run -v "$(pwd)/solution":/filler/solution -it filler
+```
+
+### Test Against Bots (Inside Container)
+```bash
+# Test against different bots using the pre-built game engine
+./linux_game_engine -f maps/map01 -p1 solution/filler_ai -p2 linux_robots/bender
+./linux_game_engine -f maps/map01 -p1 solution/filler_ai -p2 linux_robots/h2_d2
+./linux_game_engine -f maps/map01 -p1 solution/filler_ai -p2 linux_robots/wall_e
+
+# For M1 Macs, use m1_game_engine and m1_robots
+./m1_game_engine -f maps/map01 -p1 solution/filler_ai -p2 m1_robots/bender
+```
+
+## Available Opponent Bots (from docker_image/)
+
+- **bender**: Medium difficulty bot
+- **h2_d2**: Easy-medium difficulty bot  
+- **wall_e**: Easy difficulty bot
+- **terminator**: Very strong bot (optional to beat)
 
 ## Game Rules
 
-- Players start at opposite corners of the board
-- Each turn, place a piece with exactly one cell overlapping your territory
-- Cannot overlap opponent territory
-- Win by controlling the most area when no valid moves remain
+1. Players start at opposite corners of the board (@ for Player 1, $ for Player 2)
+2. Each turn, players receive a random Tetris-like piece
+3. Pieces must be placed with **exactly one cell** overlapping existing territory
+4. Pieces cannot overlap opponent territory
+5. The player controlling the most area when no valid moves remain wins
 
-## AI Difficulty Levels
+## AI Strategy
 
-- **Easy**: Random valid moves
-- **Medium**: Greedy territory expansion
-- **Hard**: Minimax with alpha-beta pruning (depth 3)
-- **Expert**: Advanced minimax with optimizations (depth 5)
+The AI uses different strategies based on difficulty:
+- **Easy**: Random valid move selection
+- **Medium**: Greedy strategy (maximize immediate territory gain)
+- **Hard/Expert**: Minimax algorithm with alpha-beta pruning
 
-## Files Structure
+## File Structure
 
-- `src/bin/game_engine.rs` - Main game engine
-- `src/bin/filler_ai.rs` - AI bot executable
-- `src/game.rs` - Core game logic
-- `src/ai.rs` - AI implementations
-- `src/piece.rs` - Piece generation
-- `maps/` - Sample map files
-- `robots/` - Test opponent bots
+```
+src/
+├── bin/
+│   ├── filler_engine.rs    # Main game engine
+│   └── filler_ai.rs        # Standalone AI bot
+├── game.rs                 # Core game logic
+├── piece.rs                # Piece generation and management
+├── ai.rs                   # AI strategies and algorithms
+├── player.rs               # Player interfaces
+├── visualizer.rs           # Game visualization
+├── utils.rs                # Utility functions
+└── lib.rs                  # Library exports and tests
+
+docker_image/               # Pre-built bots and game engines (DO NOT MODIFY)
+├── linux_robots/          # Linux opponent bots
+├── m1_robots/             # M1 Mac opponent bots
+├── maps/                  # Official test maps
+├── linux_game_engine      # Linux game engine
+└── m1_game_engine         # M1 Mac game engine
+```
+
+## Testing
+
+Run the test suite:
+```bash
+cargo test
+```
+
+## Dependencies
+
+- `rand = "0.8"` - Random number generation for pieces and AI

@@ -1,93 +1,28 @@
-FROM ubuntu:20.04
+FROM rust:1.70-buster
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Copy our Rust project source first
+COPY ./src /filler/src
+COPY ./Cargo.toml /filler/Cargo.toml
+# Don't copy Cargo.lock to avoid version conflicts - let cargo generate it
 
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Set working directory
 WORKDIR /filler
 
-# Copy project files
-COPY . .
-
-# Build the project (including game engine)
+# Build our AI
 RUN cargo build --release
 
-# Create the solution directory structure expected by audit
-RUN mkdir -p solution
+# Create solution directory and copy our AI
+RUN mkdir -p /filler/solution
 RUN cp target/release/filler_ai solution/filler_ai
 RUN chmod +x solution/filler_ai
 
-# Copy the game engine with correct name
-RUN cp target/release/game_engine ./game_engine
-RUN chmod +x game_engine
+# Now copy the docker_image contents (maps, robots, game engines)
+COPY ./docker_image/maps /filler/maps
+COPY ./docker_image/linux_robots /filler/linux_robots
+COPY ./docker_image/m1_robots /filler/m1_robots
+COPY ./docker_image/linux_game_engine /filler/linux_game_engine
+COPY ./docker_image/m1_game_engine /filler/m1_game_engine
 
-# Create game environment directories
-RUN mkdir -p maps robots
+# Make game engines and robots executable
+RUN chmod +x linux_game_engine m1_game_engine linux_robots/* m1_robots/*
 
-# Copy map files
-COPY maps/ maps/
-
-# Create robot executables with basic AI strategies
-RUN mkdir -p robots
-
-RUN printf '#!/bin/bash\n\
-while IFS= read -r line; do\n\
-    if [[ $line == "Anfield"* ]]; then\n\
-        # Read board\n\
-        while IFS= read -r board_line; do\n\
-            if [[ $board_line == "Piece"* ]]; then\n\
-                echo "1 1"\n\
-                exit 0\n\
-            fi\n\
-        done\n\
-    fi\n\
-done\n' > robots/wall_e && chmod +x robots/wall_e
-
-RUN printf '#!/bin/bash\n\
-while IFS= read -r line; do\n\
-    if [[ $line == "Anfield"* ]]; then\n\
-        # Read board\n\
-        while IFS= read -r board_line; do\n\
-            if [[ $board_line == "Piece"* ]]; then\n\
-                echo "2 2"\n\
-                exit 0\n\
-            fi\n\
-        done\n\
-    fi\n\
-done\n' > robots/h2_d2 && chmod +x robots/h2_d2
-
-RUN printf '#!/bin/bash\n\
-while IFS= read -r line; do\n\
-    if [[ $line == "Anfield"* ]]; then\n\
-        # Read board\n\
-        while IFS= read -r board_line; do\n\
-            if [[ $board_line == "Piece"* ]]; then\n\
-                echo "1 2"\n\
-                exit 0\n\
-            fi\n\
-        done\n\
-    fi\n\
-done\n' > robots/bender && chmod +x robots/bender
-
-RUN printf '#!/bin/bash\n\
-while IFS= read -r line; do\n\
-    if [[ $line == "Anfield"* ]]; then\n\
-        # Read board\n\
-        while IFS= read -r board_line; do\n\
-            if [[ $board_line == "Piece"* ]]; then\n\
-                echo "0 1"\n\
-                exit 0\n\
-            fi\n\
-        done\n\
-    fi\n\
-done\n' > robots/terminator && chmod +x robots/terminator
-
-WORKDIR /filler
-CMD ["/bin/bash"]
+ENTRYPOINT ["/bin/bash"]

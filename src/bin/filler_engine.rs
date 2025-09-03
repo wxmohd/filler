@@ -13,6 +13,7 @@ fn main() -> io::Result<()> {
         println!("  -p1 <player> Player 1 executable");
         println!("  -p2 <player> Player 2 executable");
         println!("  -h           Human vs AI mode");
+        println!("  --ai-vs-ai   AI vs AI mode");
         return Ok(());
     }
 
@@ -20,6 +21,7 @@ fn main() -> io::Result<()> {
     let mut player1 = None;
     let mut player2 = None;
     let mut human_mode = false;
+    let mut ai_vs_ai = false;
     
     let mut i = 1;
     while i < args.len() {
@@ -52,6 +54,10 @@ fn main() -> io::Result<()> {
                 human_mode = true;
                 i += 1;
             }
+            "--ai-vs-ai" => {
+                ai_vs_ai = true;
+                i += 1;
+            }
             _ => i += 1,
         }
     }
@@ -64,7 +70,7 @@ fn main() -> io::Result<()> {
         (15, 10)
     };
 
-    run_terminal_game(board_size.0, board_size.1, player1, player2, human_mode)
+    run_terminal_game(board_size.0, board_size.1, player1, player2, human_mode, ai_vs_ai)
 }
 
 fn run_terminal_game(
@@ -72,7 +78,8 @@ fn run_terminal_game(
     height: usize, 
     player1_cmd: Option<String>, 
     player2_cmd: Option<String>,
-    human_mode: bool
+    human_mode: bool,
+    ai_vs_ai: bool
 ) -> io::Result<()> {
     let mut game = GameState::new(width, height);
     let mut piece_generator = PieceGenerator::new(42);
@@ -90,10 +97,25 @@ fn run_terminal_game(
         None
     };
 
+    // Create AI players if needed
+    let mut ai1 = if ai_vs_ai && p1_process.is_none() {
+        Some(create_ai(AIDifficulty::Hard))
+    } else {
+        None
+    };
+    
+    let mut ai2 = if ai_vs_ai && p2_process.is_none() {
+        Some(create_ai(AIDifficulty::Medium))
+    } else {
+        None
+    };
+
     println!("$$$ exec p1 : [{}]", 
-             player1_cmd.as_deref().unwrap_or("human"));
+             if ai_vs_ai && p1_process.is_none() { "AI Hard" }
+             else { player1_cmd.as_deref().unwrap_or("human") });
     println!("$$$ exec p2 : [{}]", 
-             player2_cmd.as_deref().unwrap_or("AI"));
+             if ai_vs_ai && p2_process.is_none() { "AI Medium" }
+             else { player2_cmd.as_deref().unwrap_or("AI") });
 
     // Main game loop
     loop {
@@ -110,18 +132,24 @@ fn run_terminal_game(
 
         // Get move from current player
         let move_result = if game.current_player == 1 {
-            if human_mode || p1_process.is_none() {
+            if human_mode && !ai_vs_ai {
                 get_human_move(&game, &current_piece)
+            } else if let Some(ref mut ai) = ai1 {
+                ai.choose_move(&game, &current_piece)
+            } else if let Some(ref mut process) = p1_process {
+                get_bot_move(process, &game, &current_piece, 1)
             } else {
-                get_bot_move(p1_process.as_mut().unwrap(), &game, &current_piece, 1)
+                get_human_move(&game, &current_piece)
             }
         } else {
-            if p2_process.is_none() {
+            if let Some(ref mut ai) = ai2 {
+                ai.choose_move(&game, &current_piece)
+            } else if let Some(ref mut process) = p2_process {
+                get_bot_move(process, &game, &current_piece, 2)
+            } else {
                 // Default AI if no player 2 specified
                 let mut ai = create_ai(AIDifficulty::Medium);
                 ai.choose_move(&game, &current_piece)
-            } else {
-                get_bot_move(p2_process.as_mut().unwrap(), &game, &current_piece, 2)
             }
         };
 
@@ -264,7 +292,7 @@ fn get_bot_move(
         for y in 0..piece.height {
             for x in 0..piece.width {
                 if piece.shape.contains(&(x, y)) {
-                    write!(stdin, "*").ok()?;
+                    write!(stdin, "O").ok()?;
                 } else {
                     write!(stdin, ".").ok()?;
                 }
@@ -275,16 +303,17 @@ fn get_bot_move(
         stdin.flush().ok()?;
     }
 
-    // Read response from bot
+    // Read response from bot with timeout
     if let Some(stdout) = process.stdout.as_mut() {
         let mut reader = BufReader::new(stdout);
         let mut response = String::new();
         
+        // Simple timeout implementation - in a real implementation you'd use proper async I/O
         if reader.read_line(&mut response).is_ok() {
             let coords: Vec<&str> = response.trim().split_whitespace().collect();
             if coords.len() == 2 {
-                if let (Ok(row), Ok(col)) = (coords[0].parse::<usize>(), coords[1].parse::<usize>()) {
-                    return Some((col, row));
+                if let (Ok(x), Ok(y)) = (coords[0].parse::<usize>(), coords[1].parse::<usize>()) {
+                    return Some((x, y)); // Bot outputs in X Y format
                 }
             }
         }

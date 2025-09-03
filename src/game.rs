@@ -52,6 +52,21 @@ impl GameState {
         }
     }
 
+    pub fn from_board(board: Vec<Vec<Cell>>) -> Self {
+        let height = board.len();
+        let width = if height > 0 { board[0].len() } else { 0 };
+        
+        Self {
+            board,
+            width,
+            height,
+            current_player: 1,
+            turn: 1,
+            game_over: false,
+            winner: None,
+        }
+    }
+
     pub fn is_valid_move(&self, piece: &Piece, x: usize, y: usize) -> bool {
         let mut overlap_count = 0;
         let player_territory = if self.current_player == 1 {

@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "filler_engine"
-path = "src/bin/filler_engine.rs"
-
-[[bin]]
 name = "filler_ai"
-path = "src/bin/filler_ai.rs"
+path = "solution/filler_ai.rs"
 
 [dependencies]
 rand = "0.8"

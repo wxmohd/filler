@@ -1,4 +1,4 @@
-use crate::{GameState, player1_strategy::Player1Strategy, player2_strategy::Player2Strategy, utils::*};
+use crate::{GameState, player1_strategy::Player1Strategy, utils::*};
 
 pub struct AI;
 
@@ -21,11 +21,7 @@ impl AI {
         for y in 0..board.len() {
             for x in 0..board[0].len() {
                 if can_place_piece(game_state, x as i32, y as i32, &opponent_chars, &our_chars, first_move) {
-                    let score = if player_number == 1 {
-                        Player1Strategy::calculate_move_score(board, piece, x as i32, y as i32, territory)
-                    } else {
-                        Player2Strategy::calculate_move_score(board, piece, x as i32, y as i32, territory)
-                    };
+                    let score = Player1Strategy::calculate_move_score(board, piece, x as i32, y as i32, territory);
                     
                     valid_moves.push((x, y, score));
                     

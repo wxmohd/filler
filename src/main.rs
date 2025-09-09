@@ -1,4 +1,4 @@
-use filler_ai::{GameState, AI};
+use filler::{GameState, AI};
 
 fn main() {
     let mut game_state = GameState::new();

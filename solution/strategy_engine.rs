@@ -37,11 +37,12 @@ impl StrategyEngine {
             return (0, 0);
         }
         
-        // Sort by score (descending), then by position for deterministic behavior
+        // Completely deterministic sorting - score first, then position
         candidate_moves.sort_by(|a, b| {
             match b.2.cmp(&a.2) {
                 std::cmp::Ordering::Equal => {
-                    // If scores are equal, prefer top-left positions for consistency
+                    // For equal scores, prefer positions that maximize early game advantage
+                    // Prefer top-left positions for deterministic behavior
                     match a.1.cmp(&b.1) {
                         std::cmp::Ordering::Equal => a.0.cmp(&b.0),
                         other => other,
@@ -50,6 +51,27 @@ impl StrategyEngine {
                 other => other,
             }
         });
+        
+        // Additional deterministic check - if multiple moves have the same top score,
+        // prefer the one that maximizes territory control
+        let best_score = candidate_moves[0].2;
+        let best_moves: Vec<_> = candidate_moves.iter()
+            .take_while(|&&(_, _, score)| score == best_score)
+            .collect();
+        
+        if best_moves.len() > 1 {
+            // Among equally good moves, prefer corner/edge positions
+            for &(x, y, _) in &best_moves {
+                if (*x == 0 || *x == state.width - 1) && (*y == 0 || *y == state.height - 1) {
+                    return (*x, *y); // Corner position
+                }
+            }
+            for &(x, y, _) in &best_moves {
+                if *x == 0 || *x == state.width - 1 || *y == 0 || *y == state.height - 1 {
+                    return (*x, *y); // Edge position
+                }
+            }
+        }
         
         (candidate_moves[0].0, candidate_moves[0].1)
     }
@@ -93,11 +115,17 @@ impl StrategyEngine {
         let mut cells_captured = 0;
         let mut enemy_adjacent_count = 0;
         
-        // Simple game phase detection
+        // Deterministic game phase detection with map size awareness
         let total_cells = state.width * state.height;
         let occupied_cells = state.my_territory.len() + self.count_enemy_territory(state);
         let game_progress = occupied_cells as f32 / total_cells as f32;
-        let is_early_game = game_progress < 0.4;
+        let is_large_map = total_cells > 2000; // 100x100 map has 10000 cells
+        let is_early_game = if is_large_map { game_progress < 0.25 } else { game_progress < 0.35 };
+        let is_very_early = if is_large_map { state.my_territory.len() < 25 } else { state.my_territory.len() < 10 };
+        
+        // TERMINATOR MODE: Ultra-extreme aggression multiplier for maximum dominance
+        let terminator_mode = true; // Always assume facing strongest opponent
+        let aggression_multiplier = if terminator_mode { 2.0 } else { 1.0 };
         
         for (piece_row, row_data) in piece.shape.iter().enumerate() {
             for (piece_col, &cell) in row_data.iter().enumerate() {
@@ -111,63 +139,142 @@ impl StrategyEngine {
                         if board_cell == '.' {
                             cells_captured += 1;
                             
-                            // Base expansion value - more aggressive early game
-                            let base_value = if is_early_game { 800 } else { 500 };
-                            total_score += base_value;
+                            // Ultra-dominant base expansion value - maximum aggression with large map scaling
+                            let base_value = if is_very_early {
+                                if is_large_map { 3000 } else { 2000 } // Extra aggression on large maps
+                            } else if is_early_game {
+                                if is_large_map { 2500 } else { 1500 } // Scale up for large maps
+                            } else {
+                                if is_large_map { 1200 } else { 800 }  // Maintain expansion on large maps
+                            };
+                            let terminator_base = (base_value as f32 * aggression_multiplier) as i32;
+                            total_score += terminator_base;
                             
-                            // Strategic positioning - corners and edges are valuable
+                            // Strategic positioning - corners and edges are critical (TERMINATOR MODE)
                             let position_bonus = self.compute_simple_position_bonus(board_x, board_y, state.width, state.height);
-                            let position_multiplier = if is_early_game { 3 } else { 2 };
+                            let position_multiplier = if is_very_early {
+                                if terminator_mode { 10 } else { 5 } // Ultra-extreme corner priority vs terminator
+                            } else if is_early_game {
+                                if terminator_mode { 8 } else { 4 } // Maximum corner priority vs terminator
+                            } else {
+                                if terminator_mode { 4 } else { 2 } // Maintain corner focus vs terminator
+                            };
                             total_score += position_bonus * position_multiplier;
                             
-                            // Territory connection - stay cohesive
+                            // Territory connection - maintain cohesion
                             let connection_bonus = self.compute_simple_connection_bonus(state, board_x, board_y);
-                            total_score += connection_bonus;
+                            let connection_multiplier = if is_early_game { 2 } else { 1 };
+                            total_score += connection_bonus * connection_multiplier;
                             
-                            // Enemy disruption - block opponent when adjacent
+                            // Enemy disruption - maximum blocking priority (TERMINATOR MODE)
                             let adjacent_enemies = self.count_adjacent_enemies(state, board_x, board_y);
-                            enemy_adjacent_count += adjacent_enemies;
                             if adjacent_enemies > 0 {
-                                let disruption_bonus = if is_early_game { 1200 } else { 800 };
+                                enemy_adjacent_count += adjacent_enemies;
+                                let disruption_bonus = if is_very_early {
+                                    if terminator_mode { 6000 } else { 3000 } // Ultra-extreme blocking vs terminator
+                                } else if is_early_game {
+                                    if terminator_mode { 5000 } else { 2500 } // Maximum blocking vs terminator
+                                } else {
+                                    if terminator_mode { 3000 } else { 1500 } // Maintain blocking vs terminator
+                                };
                                 total_score += adjacent_enemies * disruption_bonus;
                             }
                             
-                            // Area control - control empty spaces around us
+                            // Area control - dominate empty spaces (critical on large maps, TERMINATOR MODE)
                             let area_bonus = self.compute_simple_area_control(state, board_x, board_y);
-                            let area_multiplier = if is_early_game { 2 } else { 1 };
+                            let area_multiplier = if is_large_map {
+                                if is_early_game { 
+                                    if terminator_mode { 10 } else { 5 } // Ultra-high on large maps vs terminator
+                                } else { 
+                                    if terminator_mode { 8 } else { 4 }
+                                }
+                            } else {
+                                if is_early_game { 
+                                    if terminator_mode { 6 } else { 3 }
+                                } else { 
+                                    if terminator_mode { 4 } else { 2 }
+                                }
+                            };
                             total_score += area_bonus * area_multiplier;
+                            
+                            // Deterministic position tiebreaker - prefer top-left for consistency
+                            total_score += (state.width - board_x) as i32 + (state.height - board_y) as i32;
                         }
                     }
                 }
             }
         }
         
-        // Large capture bonus - exponential reward for big moves
+        // Ultra-massive capture bonus - exponential scaling for large moves (TERMINATOR MODE)
         if cells_captured >= 2 {
-            let capture_multiplier = if is_early_game { 300 } else { 200 };
+            let capture_multiplier = if is_very_early {
+                if is_large_map { 
+                    if terminator_mode { 2400 } else { 1200 } // Double bonus vs terminator
+                } else { 
+                    if terminator_mode { 1600 } else { 800 }
+                }
+            } else if is_early_game {
+                if is_large_map { 
+                    if terminator_mode { 1800 } else { 900 }
+                } else { 
+                    if terminator_mode { 1200 } else { 600 }
+                }
+            } else {
+                if is_large_map { 
+                    if terminator_mode { 1200 } else { 600 }
+                } else { 
+                    if terminator_mode { 800 } else { 400 }
+                }
+            };
             total_score += cells_captured * cells_captured * capture_multiplier;
         }
         
-        // Enemy blocking bonus - more aggressive early game
+        // Ultra-extreme enemy blocking bonus (TERMINATOR MODE)
         if enemy_adjacent_count > 0 {
-            let blocking_bonus = if is_early_game { 1000 } else { 600 };
+            let blocking_bonus = if is_very_early {
+                if terminator_mode { 5000 } else { 2500 } // Ultra-maximum vs terminator
+            } else if is_early_game {
+                if terminator_mode { 4000 } else { 2000 } // Maximum vs terminator
+            } else {
+                if terminator_mode { 2400 } else { 1200 } // Strong vs terminator
+            };
             total_score += enemy_adjacent_count * blocking_bonus;
         }
-        
-        // Territory advantage bonus/penalty - stronger penalties for falling behind
+
+        // Territory advantage - ultra-severe penalties for falling behind (TERMINATOR MODE)
         let my_territory_size = state.my_territory.len();
         let enemy_territory_size = self.count_enemy_territory(state);
         if my_territory_size > enemy_territory_size {
-            total_score += (my_territory_size - enemy_territory_size) as i32 * 75;
+            let advantage_bonus = if terminator_mode { 300 } else { 150 };
+            total_score += (my_territory_size - enemy_territory_size) as i32 * advantage_bonus;
         } else if enemy_territory_size > my_territory_size {
-            // Stronger penalty for being behind - need aggressive expansion
-            let penalty = if is_early_game { 100 } else { 50 };
+            let penalty = if is_very_early {
+                if terminator_mode { 800 } else { 400 } // Ultra-extreme penalty vs terminator
+            } else if is_early_game {
+                if terminator_mode { 600 } else { 300 } // Very high penalty vs terminator
+            } else {
+                if terminator_mode { 400 } else { 200 } // Strong penalty vs terminator
+            };
             total_score -= (enemy_territory_size - my_territory_size) as i32 * penalty;
         }
-        
-        // Enhanced early game corner bonus - critical for winning
-        if is_early_game && state.my_territory.len() < 20 {
-            total_score += self.compute_simple_corner_bonus(state, start_x, start_y) * 2;
+
+        // Ultra-dominant corner control - absolutely essential for winning (TERMINATOR MODE)
+        let territory_threshold = if is_large_map { 50 } else { 30 };
+        if is_early_game && state.my_territory.len() < territory_threshold {
+            let corner_multiplier = if is_very_early {
+                if terminator_mode { 
+                    if is_large_map { 16 } else { 12 } // Ultra-extreme corner priority vs terminator
+                } else { 
+                    if is_large_map { 8 } else { 6 }
+                }
+            } else {
+                if terminator_mode { 
+                    if is_large_map { 14 } else { 10 } // Maximum corner priority vs terminator
+                } else { 
+                    if is_large_map { 7 } else { 5 }
+                }
+            };
+            total_score += self.compute_simple_corner_bonus(state, start_x, start_y) * corner_multiplier;
         }
         
         total_score
@@ -1061,10 +1168,14 @@ impl StrategyEngine {
     
     fn compute_simple_area_control(&self, state: &GameState, x: usize, y: usize) -> i32 {
         let mut area_bonus = 0;
+        let is_large_map = state.width * state.height > 2000;
         
-        // Count empty spaces in 3x3 area around this position
-        for dy in -1..=1 {
-            for dx in -1..=1 {
+        // Use larger search radius on large maps for better area control
+        let search_radius = if is_large_map { 2 } else { 1 };
+        
+        // Count empty spaces in expanded area around this position
+        for dy in -search_radius..=search_radius {
+            for dx in -search_radius..=search_radius {
                 let check_x = x as i32 + dx;
                 let check_y = y as i32 + dy;
                 
@@ -1075,7 +1186,11 @@ impl StrategyEngine {
                     let cell = state.board[check_y][check_x];
                     
                     if cell == '.' {
-                        area_bonus += 30; // Bonus for controlling empty space
+                        // Distance-based bonus - closer empty cells are more valuable
+                        let distance = dx.abs() + dy.abs();
+                        let base_bonus = if is_large_map { 50 } else { 30 };
+                        let distance_penalty = distance * 10;
+                        area_bonus += (base_bonus - distance_penalty).max(10);
                     }
                 }
             }
@@ -1095,8 +1210,8 @@ impl StrategyEngine {
             let mut corner_available = true;
             let mut enemy_near_corner = false;
             
-            for dy in -2..=2 {
-                for dx in -2..=2 {
+            for dy in -3..=3 {
+                for dx in -3..=3 {
                     let check_x = corner_x as i32 + dx;
                     let check_y = corner_y as i32 + dy;
                     
@@ -1115,20 +1230,22 @@ impl StrategyEngine {
                 if !corner_available { break; }
             }
             
-            if corner_available && distance <= 6 {
-                // Higher bonus for closer positions
+            if corner_available && distance <= 8 {
+                // Ultra-high bonus for closer positions - guarantee corner control
                 let base_bonus = match distance {
-                    0 => 2000, // On corner
-                    1 => 1500, // Adjacent to corner
-                    2 => 1000, // Close to corner
-                    3 => 700,  // Moderately close
-                    4 => 500,  // Somewhat close
-                    5 => 300,  // Far but still valuable
-                    _ => 200,  // Very far
+                    0 => 4000, // On corner - massive bonus
+                    1 => 3000, // Adjacent to corner - huge bonus
+                    2 => 2000, // Close to corner - very high bonus
+                    3 => 1500, // Moderately close - high bonus
+                    4 => 1000, // Somewhat close - good bonus
+                    5 => 700,  // Far but valuable
+                    6 => 500,  // Still valuable
+                    7 => 300,  // Some value
+                    _ => 200,  // Minimal value
                 };
                 
-                // Extra bonus if enemy is approaching this corner - need to block them
-                let urgency_bonus = if enemy_near_corner { base_bonus / 2 } else { 0 };
+                // Massive urgency bonus if enemy is approaching this corner
+                let urgency_bonus = if enemy_near_corner { base_bonus } else { 0 };
                 
                 corner_bonus += base_bonus + urgency_bonus;
             }

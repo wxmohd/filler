@@ -59,18 +59,12 @@ impl StrategyEngine {
             .take_while(|&&(_, _, score)| score == best_score)
             .collect();
         
+        // TERMINATOR MODE: Trust the ultra-extreme scoring system completely
+        // Don't override with simple tie-breaking logic that ignores massive bonuses
         if best_moves.len() > 1 {
-            // Among equally good moves, prefer corner/edge positions
-            for &(x, y, _) in &best_moves {
-                if (*x == 0 || *x == state.width - 1) && (*y == 0 || *y == state.height - 1) {
-                    return (*x, *y); // Corner position
-                }
-            }
-            for &(x, y, _) in &best_moves {
-                if *x == 0 || *x == state.width - 1 || *y == 0 || *y == state.height - 1 {
-                    return (*x, *y); // Edge position
-                }
-            }
+            // Use the first move from our already-sorted list - it has the highest score
+            // and proper deterministic tie-breaking from the sort function above
+            return (best_moves[0].0, best_moves[0].1);
         }
         
         (candidate_moves[0].0, candidate_moves[0].1)
@@ -125,7 +119,37 @@ impl StrategyEngine {
         
         // TERMINATOR MODE: Ultra-extreme aggression multiplier for maximum dominance
         let terminator_mode = true; // Always assume facing strongest opponent
-        let aggression_multiplier = if terminator_mode { 2.0 } else { 1.0 };
+        let aggression_multiplier = if terminator_mode { 3.0 } else { 1.0 }; // Triple aggression vs terminator
+        
+        // TERMINATOR KILLER: Absolute first move corner dominance
+        let is_first_move = state.my_territory.is_empty();
+        if is_first_move && terminator_mode {
+            // Force corner capture on first move - this is critical vs terminator
+            let corners = [(0, 0), (0, state.height - 1), (state.width - 1, 0), (state.width - 1, state.height - 1)];
+            let mut touches_corner = false;
+            
+            for (piece_row, row_data) in piece.shape.iter().enumerate() {
+                for (piece_col, &cell) in row_data.iter().enumerate() {
+                    if cell == 'O' || cell == '#' {
+                        let board_x = start_x + piece_col;
+                        let board_y = start_y + piece_row;
+                        
+                        for &(corner_x, corner_y) in &corners {
+                            if board_x == corner_x && board_y == corner_y {
+                                touches_corner = true;
+                                break;
+                            }
+                        }
+                        if touches_corner { break; }
+                    }
+                }
+                if touches_corner { break; }
+            }
+            
+            if touches_corner {
+                total_score += 50000; // Massive bonus for corner first move vs terminator
+            }
+        }
         
         for (piece_row, row_data) in piece.shape.iter().enumerate() {
             for (piece_col, &cell) in row_data.iter().enumerate() {
@@ -141,11 +165,11 @@ impl StrategyEngine {
                             
                             // Ultra-dominant base expansion value - maximum aggression with large map scaling
                             let base_value = if is_very_early {
-                                if is_large_map { 3000 } else { 2000 } // Extra aggression on large maps
+                                if is_large_map { 5000 } else { 4000 } // Ultra-extreme aggression vs terminator
                             } else if is_early_game {
-                                if is_large_map { 2500 } else { 1500 } // Scale up for large maps
+                                if is_large_map { 4000 } else { 3000 } // Maximum aggression vs terminator
                             } else {
-                                if is_large_map { 1200 } else { 800 }  // Maintain expansion on large maps
+                                if is_large_map { 2000 } else { 1500 } // Strong expansion vs terminator
                             };
                             let terminator_base = (base_value as f32 * aggression_multiplier) as i32;
                             total_score += terminator_base;
@@ -153,11 +177,11 @@ impl StrategyEngine {
                             // Strategic positioning - corners and edges are critical (TERMINATOR MODE)
                             let position_bonus = self.compute_simple_position_bonus(board_x, board_y, state.width, state.height);
                             let position_multiplier = if is_very_early {
-                                if terminator_mode { 10 } else { 5 } // Ultra-extreme corner priority vs terminator
+                                if terminator_mode { 20 } else { 5 } // Ultra-extreme corner priority vs terminator
                             } else if is_early_game {
-                                if terminator_mode { 8 } else { 4 } // Maximum corner priority vs terminator
+                                if terminator_mode { 15 } else { 4 } // Maximum corner priority vs terminator
                             } else {
-                                if terminator_mode { 4 } else { 2 } // Maintain corner focus vs terminator
+                                if terminator_mode { 8 } else { 2 } // Maintain corner focus vs terminator
                             };
                             total_score += position_bonus * position_multiplier;
                             
@@ -171,11 +195,11 @@ impl StrategyEngine {
                             if adjacent_enemies > 0 {
                                 enemy_adjacent_count += adjacent_enemies;
                                 let disruption_bonus = if is_very_early {
-                                    if terminator_mode { 6000 } else { 3000 } // Ultra-extreme blocking vs terminator
+                                    if terminator_mode { 12000 } else { 3000 } // Ultra-extreme blocking vs terminator
                                 } else if is_early_game {
-                                    if terminator_mode { 5000 } else { 2500 } // Maximum blocking vs terminator
+                                    if terminator_mode { 10000 } else { 2500 } // Maximum blocking vs terminator
                                 } else {
-                                    if terminator_mode { 3000 } else { 1500 } // Maintain blocking vs terminator
+                                    if terminator_mode { 6000 } else { 1500 } // Maintain blocking vs terminator
                                 };
                                 total_score += adjacent_enemies * disruption_bonus;
                             }
@@ -197,8 +221,13 @@ impl StrategyEngine {
                             };
                             total_score += area_bonus * area_multiplier;
                             
-                            // Deterministic position tiebreaker - prefer top-left for consistency
-                            total_score += (state.width - board_x) as i32 + (state.height - board_y) as i32;
+                            // Deterministic position tiebreaker - prefer top-left for consistency (scaled for terminator mode)
+                            let tiebreaker = (state.width - board_x) as i32 + (state.height - board_y) as i32;
+                            if terminator_mode {
+                                total_score += tiebreaker; // Keep small for terminator mode to not interfere with massive bonuses
+                            } else {
+                                total_score += tiebreaker * 10; // Scale up for normal mode
+                            }
                         }
                     }
                 }
@@ -232,11 +261,11 @@ impl StrategyEngine {
         // Ultra-extreme enemy blocking bonus (TERMINATOR MODE)
         if enemy_adjacent_count > 0 {
             let blocking_bonus = if is_very_early {
-                if terminator_mode { 5000 } else { 2500 } // Ultra-maximum vs terminator
+                if terminator_mode { 15000 } else { 2500 } // Ultra-maximum vs terminator
             } else if is_early_game {
-                if terminator_mode { 4000 } else { 2000 } // Maximum vs terminator
+                if terminator_mode { 12000 } else { 2000 } // Maximum vs terminator
             } else {
-                if terminator_mode { 2400 } else { 1200 } // Strong vs terminator
+                if terminator_mode { 8000 } else { 1200 } // Strong vs terminator
             };
             total_score += enemy_adjacent_count * blocking_bonus;
         }
@@ -245,15 +274,15 @@ impl StrategyEngine {
         let my_territory_size = state.my_territory.len();
         let enemy_territory_size = self.count_enemy_territory(state);
         if my_territory_size > enemy_territory_size {
-            let advantage_bonus = if terminator_mode { 300 } else { 150 };
+            let advantage_bonus = if terminator_mode { 600 } else { 150 };
             total_score += (my_territory_size - enemy_territory_size) as i32 * advantage_bonus;
         } else if enemy_territory_size > my_territory_size {
             let penalty = if is_very_early {
-                if terminator_mode { 800 } else { 400 } // Ultra-extreme penalty vs terminator
+                if terminator_mode { 2000 } else { 400 } // Ultra-extreme penalty vs terminator
             } else if is_early_game {
-                if terminator_mode { 600 } else { 300 } // Very high penalty vs terminator
+                if terminator_mode { 1500 } else { 300 } // Very high penalty vs terminator
             } else {
-                if terminator_mode { 400 } else { 200 } // Strong penalty vs terminator
+                if terminator_mode { 1000 } else { 200 } // Strong penalty vs terminator
             };
             total_score -= (enemy_territory_size - my_territory_size) as i32 * penalty;
         }
@@ -263,13 +292,13 @@ impl StrategyEngine {
         if is_early_game && state.my_territory.len() < territory_threshold {
             let corner_multiplier = if is_very_early {
                 if terminator_mode { 
-                    if is_large_map { 16 } else { 12 } // Ultra-extreme corner priority vs terminator
+                    if is_large_map { 32 } else { 24 } // Ultra-extreme corner priority vs terminator
                 } else { 
                     if is_large_map { 8 } else { 6 }
                 }
             } else {
                 if terminator_mode { 
-                    if is_large_map { 14 } else { 10 } // Maximum corner priority vs terminator
+                    if is_large_map { 28 } else { 20 } // Maximum corner priority vs terminator
                 } else { 
                     if is_large_map { 7 } else { 5 }
                 }

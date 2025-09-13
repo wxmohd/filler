@@ -114,8 +114,15 @@ impl StrategyEngine {
         let occupied_cells = state.my_territory.len() + self.count_enemy_territory(state);
         let game_progress = occupied_cells as f32 / total_cells as f32;
         let is_large_map = total_cells > 2000; // 100x100 map has 10000 cells
-        let is_early_game = if is_large_map { game_progress < 0.25 } else { game_progress < 0.35 };
-        let is_very_early = if is_large_map { state.my_territory.len() < 25 } else { state.my_territory.len() < 10 };
+        let is_map02 = total_cells >= 10000; // Specifically map02 (100x100)
+        let is_early_game = if is_large_map { game_progress < 0.20 } else { game_progress < 0.35 };
+        let is_very_early = if is_map02 { 
+            state.my_territory.len() < 50 // Extended very early phase for map02
+        } else if is_large_map { 
+            state.my_territory.len() < 25 
+        } else { 
+            state.my_territory.len() < 10 
+        };
         
         // TERMINATOR MODE: Ultra-extreme aggression multiplier for maximum dominance
         let terminator_mode = true; // Always assume facing strongest opponent
@@ -163,13 +170,13 @@ impl StrategyEngine {
                         if board_cell == '.' {
                             cells_captured += 1;
                             
-                            // Ultra-dominant base expansion value - maximum aggression with large map scaling
+                            // Ultra-dominant base expansion value - maximum aggression with map02 scaling
                             let base_value = if is_very_early {
-                                if is_large_map { 5000 } else { 4000 } // Ultra-extreme aggression vs terminator
+                                if is_map02 { 25000 } else if is_large_map { 15000 } else { 12000 } // Massively increased for all maps
                             } else if is_early_game {
-                                if is_large_map { 4000 } else { 3000 } // Maximum aggression vs terminator
+                                if is_map02 { 20000 } else if is_large_map { 12000 } else { 9000 } // Significantly increased for all maps
                             } else {
-                                if is_large_map { 2000 } else { 1500 } // Strong expansion vs terminator
+                                if is_map02 { 15000 } else if is_large_map { 8000 } else { 6000 } // Increased for all maps
                             };
                             let terminator_base = (base_value as f32 * aggression_multiplier) as i32;
                             total_score += terminator_base;
@@ -177,11 +184,11 @@ impl StrategyEngine {
                             // Strategic positioning - corners and edges are critical (TERMINATOR MODE)
                             let position_bonus = self.compute_simple_position_bonus(board_x, board_y, state.width, state.height);
                             let position_multiplier = if is_very_early {
-                                if terminator_mode { 20 } else { 5 } // Ultra-extreme corner priority vs terminator
+                                if is_map02 { 150 } else if is_large_map { 120 } else { 80 } // Massively increased for all maps
                             } else if is_early_game {
-                                if terminator_mode { 15 } else { 4 } // Maximum corner priority vs terminator
+                                if is_map02 { 120 } else if is_large_map { 90 } else { 60 } // Significantly increased for all maps
                             } else {
-                                if terminator_mode { 8 } else { 2 } // Maintain corner focus vs terminator
+                                if is_map02 { 60 } else if is_large_map { 40 } else { 30 } // Increased for all maps
                             };
                             total_score += position_bonus * position_multiplier;
                             
@@ -195,29 +202,23 @@ impl StrategyEngine {
                             if adjacent_enemies > 0 {
                                 enemy_adjacent_count += adjacent_enemies;
                                 let disruption_bonus = if is_very_early {
-                                    if terminator_mode { 12000 } else { 3000 } // Ultra-extreme blocking vs terminator
+                                    if is_map02 { 80000 } else if is_large_map { 60000 } else { 40000 } // Massively increased for all maps
                                 } else if is_early_game {
-                                    if terminator_mode { 10000 } else { 2500 } // Maximum blocking vs terminator
+                                    if is_map02 { 60000 } else if is_large_map { 45000 } else { 30000 } // Significantly increased for all maps
                                 } else {
-                                    if terminator_mode { 6000 } else { 1500 } // Maintain blocking vs terminator
+                                    if is_map02 { 40000 } else if is_large_map { 25000 } else { 18000 } // Increased for all maps
                                 };
                                 total_score += adjacent_enemies * disruption_bonus;
                             }
                             
                             // Area control - dominate empty spaces (critical on large maps, TERMINATOR MODE)
                             let area_bonus = self.compute_simple_area_control(state, board_x, board_y);
-                            let area_multiplier = if is_large_map {
-                                if is_early_game { 
-                                    if terminator_mode { 10 } else { 5 } // Ultra-high on large maps vs terminator
-                                } else { 
-                                    if terminator_mode { 8 } else { 4 }
-                                }
+                            let area_multiplier = if is_map02 {
+                                if is_early_game { 100 } else { 70 } // Massively increased for map02
+                            } else if is_large_map {
+                                if is_early_game { 70 } else { 50 } // Significantly increased for large maps
                             } else {
-                                if is_early_game { 
-                                    if terminator_mode { 6 } else { 3 }
-                                } else { 
-                                    if terminator_mode { 4 } else { 2 }
-                                }
+                                if is_early_game { 50 } else { 35 } // Increased for small maps
                             };
                             total_score += area_bonus * area_multiplier;
                             
@@ -237,23 +238,11 @@ impl StrategyEngine {
         // Ultra-massive capture bonus - exponential scaling for large moves (TERMINATOR MODE)
         if cells_captured >= 2 {
             let capture_multiplier = if is_very_early {
-                if is_large_map { 
-                    if terminator_mode { 2400 } else { 1200 } // Double bonus vs terminator
-                } else { 
-                    if terminator_mode { 1600 } else { 800 }
-                }
+                if is_map02 { 20000 } else if is_large_map { 15000 } else { 10000 } // Massively increased for all maps
             } else if is_early_game {
-                if is_large_map { 
-                    if terminator_mode { 1800 } else { 900 }
-                } else { 
-                    if terminator_mode { 1200 } else { 600 }
-                }
+                if is_map02 { 16000 } else if is_large_map { 12000 } else { 8000 } // Significantly increased for all maps
             } else {
-                if is_large_map { 
-                    if terminator_mode { 1200 } else { 600 }
-                } else { 
-                    if terminator_mode { 800 } else { 400 }
-                }
+                if is_map02 { 10000 } else if is_large_map { 7000 } else { 5000 } // Increased for all maps
             };
             total_score += cells_captured * cells_captured * capture_multiplier;
         }
@@ -261,11 +250,11 @@ impl StrategyEngine {
         // Ultra-extreme enemy blocking bonus (TERMINATOR MODE)
         if enemy_adjacent_count > 0 {
             let blocking_bonus = if is_very_early {
-                if terminator_mode { 15000 } else { 2500 } // Ultra-maximum vs terminator
+                if is_map02 { 120000 } else if is_large_map { 80000 } else { 60000 } // Massively increased for all maps
             } else if is_early_game {
-                if terminator_mode { 12000 } else { 2000 } // Maximum vs terminator
+                if is_map02 { 90000 } else if is_large_map { 60000 } else { 45000 } // Significantly increased for all maps
             } else {
-                if terminator_mode { 8000 } else { 1200 } // Strong vs terminator
+                if is_map02 { 60000 } else if is_large_map { 40000 } else { 30000 } // Increased for all maps
             };
             total_score += enemy_adjacent_count * blocking_bonus;
         }
@@ -274,34 +263,26 @@ impl StrategyEngine {
         let my_territory_size = state.my_territory.len();
         let enemy_territory_size = self.count_enemy_territory(state);
         if my_territory_size > enemy_territory_size {
-            let advantage_bonus = if terminator_mode { 600 } else { 150 };
+            let advantage_bonus = if is_map02 { 6000 } else if is_large_map { 4000 } else { 3000 };
             total_score += (my_territory_size - enemy_territory_size) as i32 * advantage_bonus;
         } else if enemy_territory_size > my_territory_size {
             let penalty = if is_very_early {
-                if terminator_mode { 2000 } else { 400 } // Ultra-extreme penalty vs terminator
+                if is_map02 { 15000 } else if is_large_map { 12000 } else { 8000 } // Massively increased penalty for all maps
             } else if is_early_game {
-                if terminator_mode { 1500 } else { 300 } // Very high penalty vs terminator
+                if is_map02 { 12000 } else if is_large_map { 9000 } else { 6000 } // Significantly increased penalty for all maps
             } else {
-                if terminator_mode { 1000 } else { 200 } // Strong penalty vs terminator
+                if is_map02 { 8000 } else if is_large_map { 6000 } else { 4000 } // Increased penalty for all maps
             };
             total_score -= (enemy_territory_size - my_territory_size) as i32 * penalty;
         }
 
-        // Ultra-dominant corner control - absolutely essential for winning (TERMINATOR MODE)
-        let territory_threshold = if is_large_map { 50 } else { 30 };
+        // Ultra-dominant corner control - absolutely essential for winning (ALL MAPS MODE)
+        let territory_threshold = if is_map02 { 100 } else if is_large_map { 50 } else { 30 };
         if is_early_game && state.my_territory.len() < territory_threshold {
             let corner_multiplier = if is_very_early {
-                if terminator_mode { 
-                    if is_large_map { 32 } else { 24 } // Ultra-extreme corner priority vs terminator
-                } else { 
-                    if is_large_map { 8 } else { 6 }
-                }
+                300 // Absolutely extreme corner priority for ALL maps and ALL opponents
             } else {
-                if terminator_mode { 
-                    if is_large_map { 28 } else { 20 } // Maximum corner priority vs terminator
-                } else { 
-                    if is_large_map { 7 } else { 5 }
-                }
+                250 // Ultra-maximum corner priority for ALL maps and ALL opponents
             };
             total_score += self.compute_simple_corner_bonus(state, start_x, start_y) * corner_multiplier;
         }

@@ -1,4 +1,9 @@
 use filler::{GameState, AI};
+pub mod game_state;
+pub mod game_piece;
+pub mod strategy_engine;
+
+use crate::strategy_engine::StrategyEngine;
 
 fn main() {
     let mut game_state = GameState::new();

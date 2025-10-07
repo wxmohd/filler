@@ -1,164 +1,112 @@
 # Filler Game
 
-A terminal-based implementation of the Filler game in Rust with AI opponents.
+A terminal-based Filler AI bot in Rust that speaks the standard game protocol (stdin/stdout) and can be run against the official engines and bots provided in `docker_image/`.
 
 ## Features
 
-- **Game Engine**: Terminal-based Filler game engine (`filler_engine`)
-- **AI Bot**: Standalone AI bot (`filler_ai`) compatible with standard Filler protocol
-- **Multiple AI Difficulties**: Easy (Random), Medium (Greedy), Hard/Expert (Minimax with alpha-beta pruning)
-- **Interactive Gameplay**: Human vs AI, AI vs AI, and Human vs Human modes
-- **Game Visualization**: Terminal-based board display with animations
-- **Docker Support**: Uses existing `docker_image/` folder with pre-built opponent bots
+- **AI Bot**: Protocol-compliant standalone bot (`filler_ai`) at `solution/filler_ai.rs`
+- **Strategy Engine**: Heuristic-based placement with legality checks and territory awareness
+- **Docker Support**: Uses the existing `docker_image/` folder with pre-built game engines and opponent bots
+- **Cross-platform workflow**: Build your bot natively; run full matches inside Docker or WSL
 
 ## Quick Start
 
-### Building the Project
+### Build (Release)
 
 ```bash
 cargo build --release
 ```
 
-### Running the Game
+### Run the AI bot locally
 
-#### Terminal Game Engine
 ```bash
-# Human vs AI
-./target/release/filler_engine
+# Runs and waits for engine-formatted input on stdin
+./target/release/filler_ai
 
-# AI vs AI
-./target/release/filler_engine --ai-vs-ai
-
-# Custom board size
-./target/release/filler_engine --width 20 --height 15
-```
-
-#### Standalone AI Bot
-```bash
-# Test AI with input file
+# OR with an input file
 ./target/release/filler_ai < test_input.txt
 ```
 
 ## Docker Usage
 
-The project integrates with the existing `docker_image/` folder containing pre-built opponent bots:
+The repo integrates with the existing `docker_image/` folder containing pre-built opponent bots and engines.
 
-### Build Docker Image
+### Build Docker image
 ```bash
 docker build -t filler .
 ```
 
-### Run Container
+### Run container (mount your bot)
+
+- PowerShell (Windows):
+```powershell
+docker run -v "${PWD}\solution:/filler/solution" -it filler
+```
+
+- Git Bash / macOS / Linux:
 ```bash
 docker run -v "$(pwd)/solution":/filler/solution -it filler
 ```
 
-### Test Against Bots (Inside Container)
+### Play matches against bots (inside container)
 ```bash
-# Test against different bots using the pre-built game engine
+# Use the provided Linux engine with official maps and bots
 ./linux_game_engine -f maps/map01 -p1 solution/filler_ai -p2 linux_robots/bender
 ./linux_game_engine -f maps/map01 -p1 solution/filler_ai -p2 linux_robots/h2_d2
 ./linux_game_engine -f maps/map01 -p1 solution/filler_ai -p2 linux_robots/wall_e
 
-# For M1 Macs, use m1_game_engine and m1_robots
+# For Apple Silicon (if using the macOS/ARM container), use the M1 engine and bots
 ./m1_game_engine -f maps/map01 -p1 solution/filler_ai -p2 m1_robots/bender
 ```
 
 ## Available Opponent Bots (from docker_image/)
 
-- **bender**: Medium difficulty bot
-- **h2_d2**: Easy-medium difficulty bot  
-- **wall_e**: Easy difficulty bot
-- **terminator**: Very strong bot (optional to beat)
+- **bender**
+- **h2_d2**  
+- **wall_e**
+- **terminator** (very strong)
 
-## Game Rules
+## Game Rules (engine-enforced)
 
-1. Players start at opposite corners of the board (@ for Player 1, $ for Player 2)
-2. Each turn, players receive a random Tetris-like piece
-3. Pieces must be placed with **exactly one cell** overlapping existing territory
-
-The AI implementation includes:
-
-- **Expert Level**: Minimax with alpha-beta pruning (depth 6)
-- **Hard Level**: Minimax with alpha-beta pruning (depth 4)
-- **Medium Level**: Greedy strategy with heuristics
-- **Easy Level**: Random move selection
-
-### AI Evaluation Factors
-
-- Territory control and expansion
-- Strategic position control (center bias)
-- Piece connectivity and efficiency
-- Opponent blocking strategies
-- Distance-based positioning
+1. Players start at opposite corners of the board (`@` for Player 1, `$` for Player 2)
+2. Each turn, players receive a piece
+3. A legal placement must overlap your existing territory by exactly one cell and not collide with the opponent
 
 ## Maps
 
-The project includes three official maps:
+The project includes three official maps (via `docker_image/maps/`):
 
 - **map00**: 20x15 grid
 - **map01**: 40x24 grid  
 - **map02**: 100x100 grid
 
-## Testing
+## Testing / Validation
 
-Comprehensive test suite covering:
+- There is no Rust test suite included in this repo. Validate behavior by running matches inside Docker (or WSL) using the engines and bots above.
+- You can also pipe recorded engine input into `filler_ai` locally for quick checks.
 
-- Core game logic and rules validation
-- AI strategy effectiveness
-- Piece placement mechanics
-- Edge cases and error handling
-- Integration tests for complete game flows
+## Performance & Compatibility
 
-```bash
-cargo test --lib          # Unit tests
-cargo test --test integration_tests  # Integration tests
-```
-
-## Performance Requirements
-
-The AI is designed to meet audit requirements:
-
-- **Win Rate**: 4/5 games against bender, h2_d2, and wall_e
-- **Response Time**: Under 10 seconds per move
-- **Memory Efficient**: Optimized for large boards (100x100)
-- **Protocol Compliant**: Follows exact game engine communication format
-
-## Bonus Features
-
-- **Visualizer**: Real-time game visualization with animations
-- **Human Player Mode**: Interactive gameplay with help system
-- **Game Replay**: Record and playback game sessions
-- **Multiple Game Modes**: Human vs AI, AI vs AI, Human vs Human
-- **Terminator Challenge**: Advanced AI capable of competing against terminator bot
-
-## Architecture
-
-The codebase follows clean architecture principles:
-
-- **Modular Design**: Separate concerns for game logic, AI, and visualization
-- **Testable**: Comprehensive unit and integration test coverage
-- **Extensible**: Easy to add new AI strategies or game modes
-- **Performance Optimized**: Efficient algorithms for large-scale games
+- The bot is protocol-compliant (reads from stdin, writes `"x y"` to stdout per move)
+- Designed to work with the provided engines and maps inside Docker/WSL
+- Windows users: build and run `filler_ai` natively; use Docker or WSL for full matches with the official engines/bots
 
 ## Usage Examples
 
 ```bash
-# Quick test against bender
+# Quick test against bender (inside container)
 ./linux_game_engine -f maps/map01 -p1 solution/filler_ai -p2 linux_robots/bender
 
-# Quiet mode for automated testing
+# Quiet mode (if supported by the engine)
 ./linux_game_engine -f maps/map00 -p1 solution/filler_ai -p2 linux_robots/wall_e -q
 
-# With custom seed for reproducible results
+# With custom seed for reproducibility (if supported)
 ./linux_game_engine -f maps/map02 -p1 solution/filler_ai -p2 linux_robots/h2_d2 -s 12345
 
-# Throttled mode for visualization
+# Throttled mode for visualization (if supported)
 ./linux_game_engine -f maps/map01 -p1 solution/filler_ai -p2 linux_robots/bender -r
 ```
 
-This implementation provides a complete, audit-ready Filler game that meets all functional and bonus requirements.
-
 ## Dependencies
 
-- `rand = "0.8"` - Random number generation for pieces and AI
+- `rand = "0.8"` - Random number generation for internal heuristics
